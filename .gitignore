@@ -1,0 +1,22 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+.DS_Store
+.env
+.ipynb_checkpoints/
+.venv/
+
+# data
+data/
+*.jsonl
+*.csv
+*.parquet
+
+# airflow
+airflow.db
+logs/
+
+# docker volumes
+postgres_data/

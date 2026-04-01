@@ -1,0 +1,13 @@
+feedparser==6.0.11
+jupyterlab==4.2.5
+pgvector==0.3.2
+psycopg[binary]==3.2.13
+python-dotenv==1.0.1
+requests==2.32.3
+warcio==1.7.5
+trafilatura==2.0.0
+tqdm==4.67.3
+langid==1.1.6
+pandas==3.0.1
+pyarrow==20.0.0
+matplotlib==3.10.8
