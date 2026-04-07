@@ -6,6 +6,7 @@ from email.utils import parsedate_to_datetime
 import feedparser
 
 from src.storage.models import NewsArticle
+from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode
 
 
 def collect_rss_articles(feed_urls: list[str] | tuple[str, ...]) -> list[NewsArticle]:
@@ -39,3 +40,9 @@ def _parse_datetime(value: object) -> datetime | None:
         return parsedate_to_datetime(text_value)
     except (TypeError, ValueError):
         return None
+
+def clean_url(u: str) -> str:
+    parts = urlsplit(u)
+    q = [(k, v) for k, v in parse_qsl(parts.query, keep_blank_values=True) if k != "traffic_source"]
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(q), parts.fragment))
+

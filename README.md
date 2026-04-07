@@ -1,18 +1,19 @@
-# Global Narrative Monitor (Step 1)
+# Global Narrative Monitor
 
-Initial project structure for data ingestion and storage.
+Clean and interpretable data ingestion project for global news collection and storage.
 
-This step implements only:
+Current scope:
 
-- RSS ingestion
-- GDELT ingestion
-- Unified normalization
-- Deduplication by hash
-- PostgreSQL storage with `pgvector` enabled
-- Airflow DAG scheduling every 30 minutes
-- Jupyter notebooks for exploration
+- Historical ingestion from Common Crawl CC-NEWS (manual/domain-filtered extraction)
+- Incremental ingestion from RSS feeds
+- Unified schema construction in notebooks
+- Deduplication by URL hash and short-text hash
+- PostgreSQL storage in Docker
+- Airflow + Jupyter local stack for orchestration and research
 
-No ML, embeddings generation, clustering, or narrative detection is included yet.
+No embeddings, clustering, or narrative modeling are included yet.
+
+---
 
 ## Repository structure
 
@@ -21,155 +22,46 @@ market_narratives_engine/
 ├── dags/
 │   └── ingest_news_dag.py
 ├── data/
-│   ├── processed/
-│   │   └── README.md
-│   └── raw/
-│       ├── gdelt/
-│       │   └── .gitkeep
-│       └── rss/
-│           └── .gitkeep
+│   ├── raw/
+│   │   ├── ccnews/
+│   │   ├── rss/
+│   │   └── rjac__all-the-news-2-1-Component-one/
+│   └── processed/
 ├── docker/
 │   ├── airflow/
 │   │   └── Dockerfile
 │   ├── jupyter/
 │   │   └── Dockerfile
 │   └── postgres/
-│       └── init.sql
+│       ├── init.sql
+│       └── tables/
+│           └── news_articles/
+│               └── init.sql
 ├── notebooks/
-│   ├── 01_explore_gdelt.ipynb
-│   ├── 02_explore_rss.ipynb
-│   └── 03_unified_schema.ipynb
-├── Makefile
+│   ├── 01_ccnews_extraction.ipynb
+│   ├── 02_ccnews_check_domains.ipynb
+│   ├── 03_collect_bulk_news_dfs.ipynb
+│   ├── 04_explore_rss.ipynb
+│   └── 05_unified_schema.ipynb
 ├── scripts/
 │   ├── init_db.py
 │   └── run_ingestion.py
 ├── src/
 │   ├── collectors/
-│   │   ├── gdelt_collector.py
+│   │   ├── ccnews_extractor.py
 │   │   └── rss_collector.py
 │   ├── pipeline/
-│   │   └── ingest_news.py
+│   │   ├── ingest_news.py
+│   │   └── load_ingest_to_db.py
 │   ├── storage/
 │   │   ├── database.py
 │   │   └── models.py
-│   └── config.py
+│   ├── config.py
+│   └── config.json
 ├── docker-compose.yml
+├── Makefile
 ├── .env.example
 ├── requirements.txt
 └── README.md
 ```
 
-## Data model
-
-Table: `news_articles`
-
-- `id` UUID primary key
-- `source` text
-- `title` text
-- `url` text
-- `published_at` timestamptz nullable
-- `collected_at` timestamptz
-- `origin` text (`rss` or `gdelt`)
-- `language` text nullable
-- `hash` text unique for deduplication
-- `embedding` vector(1536) nullable for future use
-
-## Unified article schema
-
-`NewsArticle` in `src/storage/models.py` has:
-
-- `source`
-- `title`
-- `url`
-- `published_at`
-- `origin`
-- `language`
-
-Both collectors output this schema.
-
-## Quick start
-
-1. Create environment file:
-
-```bash
-cp .env.example .env
-```
-
-Install project package locally once:
-
-```bash
-python -m pip install -e .
-```
-
-2. Start services:
-
-```bash
-make up
-```
-
-First run builds images and installs dependencies into images.
-Next restarts reuse those images and start quickly without reinstalling.
-
-3. Initialize database schema:
-
-```bash
-make init-db
-```
-
-4. Run one ingestion cycle manually:
-
-```bash
-make ingest
-```
-
-## Make targets
-
-- `make up` start all containers
-- `make build` build service images
-- `make down` stop and remove containers
-- `make restart` restart full stack
-- `make rebuild` rebuild images and restart stack
-- `make ps` show container status
-- `make logs` stream container logs
-- `make init-db` create extensions and table
-- `make ingest` run one ingestion cycle
-- `make notebook` print Jupyter URL
-- `make airflow` print Airflow URL
-
-## Airflow
-
-- URL: `http://localhost:8080`
-- DAG: `ingest_news`
-- Schedule: every 30 minutes (`*/30 * * * *`)
-
-The DAG tasks are:
-
-- `collect_rss`
-- `collect_gdelt`
-- `normalize_data`
-- `store_articles`
-
-## Jupyter
-
-- URL: `http://localhost:8888`
-- Token is disabled in this local setup
-- Notebooks:
-  - `notebooks/01_explore_gdelt.ipynb`
-  - `notebooks/02_explore_rss.ipynb`
-  - `notebooks/03_unified_schema.ipynb`
-
-## GDELT notes
-
-The current GDELT collector downloads the latest export file from `gdeltv2`.
-It extracts URL and timestamp directly from export rows.
-Language is best-effort from theme tokens when present.
-
-## Future steps
-
-Later steps can add:
-
-- embeddings computation
-- vector similarity search
-- clustering
-- narrative detection
-- market impact analysis

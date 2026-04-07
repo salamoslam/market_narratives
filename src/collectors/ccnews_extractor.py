@@ -51,6 +51,47 @@ def load_month_paths(base_url, month):
     random.shuffle(paths)
     return paths
 
+def parse_extracted_article(
+    extracted,
+    *,
+    min_text_len=500,
+    allowed_langs=("en", "ru"),
+    lang_sample_chars=500,
+):
+    stats_delta = {
+        "extract_non_empty": 0,
+        "json_errors": 0,
+        "lang_errors": 0,
+        "lang_filtered_out": 0,
+    }
+
+    if not extracted:
+        return None, stats_delta
+
+    stats_delta["extract_non_empty"] = 1
+
+    try:
+        data = json.loads(extracted)
+    except Exception:
+        stats_delta["json_errors"] = 1
+        stats_delta["extract_non_empty"] = 0
+        return None, stats_delta
+
+    text = data.get("text")
+    if not text or len(text) < min_text_len:
+        return None, stats_delta
+
+    try:
+        lang = langid.classify(f"{data.get('title') or ''} {text[:lang_sample_chars]}")[0]
+    except Exception:
+        stats_delta["lang_errors"] = 1
+        return None, stats_delta
+
+    if lang not in set(allowed_langs):
+        stats_delta["lang_filtered_out"] = 1
+        return None, stats_delta
+
+    return {"data": data, "text": text, "lang": lang}, stats_delta
 
 def process_warc_stream(
     url,
@@ -106,33 +147,18 @@ def process_warc_stream(
         )
         stats["extract_seconds"] += perf_counter() - t_extract_start
 
-        if not extracted:
+        parsed, d = parse_extracted_article(
+            extracted,
+            min_text_len=min_text_len,
+            allowed_langs=allowed_langs,
+            lang_sample_chars=500,
+        )
+        for k, v in d.items():
+            stats[k] += v
+        if not parsed:
             continue
 
-        stats["extract_non_empty"] += 1
-
-        t_json_start = perf_counter()
-        try:
-            data = json.loads(extracted)
-        except Exception:
-            stats["json_errors"] += 1
-            continue
-        stats["json_seconds"] += perf_counter() - t_json_start
-
-        text = data.get("text")
-
-        if not text or len(text) < min_text_len:
-            continue
-
-        try:
-            lang = langid.classify(f"{data.get('title') or ''} {text[:500]}")[0]
-        except Exception:
-            lang = None
-            stats["lang_errors"] += 1
-
-        if lang not in set(allowed_langs):
-            stats["lang_filtered_out"] += 1
-            continue
+        data, text, lang = parsed["data"], parsed["text"], parsed["lang"]
 
         item = {
             "url": record_url,
