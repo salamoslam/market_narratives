@@ -76,6 +76,59 @@ class Settings:
         "www.nur.kz",
         "www.zakon.kz"]
     )
+    rss_feeds: tuple[str, ...] = tuple([
+        "https://www.aljazeera.com/xml/rss/all.xml",
+        # "https://feeds.bbci.co.uk/news/world/rss.xml",
+        # "https://feeds.bbci.co.uk/news/business/rss.xml",
+        # "https://feeds.bbci.co.uk/news/politics/rss.xml",
+        # "https://feeds.bbci.co.uk/news/technology/rss.xml",
+
+        # "https://news.google.com/rss/search?q=site%3Abbc.com&hl=en-US&gl=US&ceid=US%3Aen"
+
+        "https://www.independent.co.uk/news/world/rss",
+        "https://www.independent.co.uk/news/business/rss",
+        "https://www.independent.co.uk/news/science/rss",
+        # kommersant.ru               |   86881
+        # newindianexpress.com        |   41517
+        # the-independent.com         |   38655
+        # cbsnews.com                 |   38472
+        # independent.co.uk           |   31192
+        # allafrica.com               |   26494
+        # interfax.ru                 |   18925
+        # vedomosti.ru                |   18217
+        # ndtv.com                    |   16847
+        # foxnews.com                 |   16370
+        # rbc.ru                      |   15284
+        # zakon.kz                    |   14761
+        # channelnewsasia.com         |   13023
+        # lenta.ru                    |   12715
+        # latimes.com                 |   12248
+        # telegraph.co.uk             |   10970
+        # nzherald.co.nz              |   10536
+        # globalnews.ca               |    9790
+        # irishtimes.com              |    9782
+        # thewest.com.au              |    9571
+        # ctvnews.ca                  |    9553
+        # yorkshirepost.co.uk         |    9402
+        # tass.ru                     |    8302
+        # timeslive.co.za             |    8039
+        # scotsman.com                |    7302
+        # aljazeera.com               |    7118
+        # straitstimes.com            |    6932
+        # vietnamnews.vn              |    6862
+        # nur.kz                      |    6711
+        # indianexpress.com           |    6503
+        # thenationalnews.com         |    6490
+        # businesslive.co.za          |    5804
+        # abcnews.go.com              |    5624
+        # qz.com                      |    4572
+        # khaleejtimes.com            |    3956
+        # ca.news.yahoo.com           |    3729
+        # nickiswift.com              |    1305
+        # ca.style.yahoo.com          |     411
+        # not-qz.com                  |     293
+        ]
+    )
 
     @property
     def postgres_dsn(self) -> str:

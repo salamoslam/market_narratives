@@ -12,3 +12,4 @@ pandas==3.0.1
 pyarrow==20.0.0
 matplotlib==3.10.8
 polars==1.39.3
+playwright==1.58.0
