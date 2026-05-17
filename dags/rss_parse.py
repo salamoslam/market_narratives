@@ -36,21 +36,45 @@ with DAG(
     def load_rss_to_db() -> dict[str, int]:
         settings = get_settings()
         rss_root = Path("/opt/airflow/project/data/raw/rss")
+
         jsonl_files = [p for p in rss_root.rglob("*.jsonl") if p.is_file()]
         if not jsonl_files:
             return {"rows_in_df": 0, "inserted_estimate": 0}
 
-        rss_lf = scan_tree(rss_root).select(
-            [
+        rss_lf = scan_tree(rss_root)
+
+        cols = set(rss_lf.collect_schema().names())
+        datetime_col = (
+                pl.col("datetime").cast(pl.Utf8)
+                if "datetime" in cols
+                else pl.lit(None, dtype=pl.Utf8)
+        )
+        date_col = (
+            pl.col("date").cast(pl.Utf8)
+            if "date" in cols
+            else pl.lit(None, dtype=pl.Utf8)
+        )
+
+        rss_lf = rss_lf.select([
+            # [
                 pl.lit("rss").alias("source_type"),
                 pl.col("domain").cast(pl.Utf8).str.to_lowercase().alias("domain"),
                 pl.col("title").cast(pl.Utf8).alias("title"),
                 pl.col("url").cast(pl.Utf8).alias("url"),
-                pl.col("date").cast(pl.Utf8).alias("date_str"),
+                pl.coalesce([datetime_col, date_col + pl.lit("T00:00:00+00:00")]).alias("datetime_str"),
+                date_col.alias("date_str"),
                 pl.col("author").cast(pl.Utf8).alias("author"),
                 pl.col("lang").cast(pl.Utf8).alias("lang"),
                 pl.col("text").cast(pl.Utf8).alias("text"),
             ]
+        ).with_columns([
+            pl.col("datetime_str").str.strptime(
+                pl.Datetime(time_zone="UTC"),
+                format="%Y-%m-%dT%H:%M:%S%z",
+                strict=False,
+            ).alias("datetime"),
+            pl.col("date_str").str.strptime(pl.Date, strict=False).alias("date"),
+        ]
         ).filter(
             pl.col("url").is_not_null()
             & pl.col("text").is_not_null()
@@ -60,11 +84,6 @@ with DAG(
 
         rss_lf = rss_lf.with_columns(
             [
-                pl.col("date_str").str.strptime(pl.Datetime, strict=False).alias("datetime"),
-            ]
-        ).with_columns(
-            [
-                pl.col("datetime").cast(pl.Date).alias("date"),
                 pl.col("url")
                 .map_elements(
                     lambda u: sha256(u.encode("utf-8")).hexdigest(),

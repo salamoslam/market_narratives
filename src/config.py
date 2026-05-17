@@ -82,13 +82,19 @@ class Settings:
         # "https://feeds.bbci.co.uk/news/business/rss.xml",
         # "https://feeds.bbci.co.uk/news/politics/rss.xml",
         # "https://feeds.bbci.co.uk/news/technology/rss.xml",
+        "http://feeds.bbci.co.uk/news/rss.xml",
 
-        # "https://news.google.com/rss/search?q=site%3Abbc.com&hl=en-US&gl=US&ceid=US%3Aen"
+        "https://www.theguardian.com/world/rss",
 
         "https://www.independent.co.uk/news/world/rss",
         "https://www.independent.co.uk/news/business/rss",
         "https://www.independent.co.uk/news/science/rss",
-        # kommersant.ru               |   86881
+
+        "https://www.kommersant.ru/rss/section-politics.xml",
+        "https://www.kommersant.ru/rss/section-world.xml",
+        "https://www.kommersant.ru/rss/section-business.xml",
+        "https://www.kommersant.ru/rss/section-society.xml",
+
         # newindianexpress.com        |   41517
         # the-independent.com         |   38655
         # cbsnews.com                 |   38472

@@ -7,6 +7,8 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-narratives}
       POSTGRES_USER: ${POSTGRES_USER:-narratives}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-narratives}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
     ports:
       - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
@@ -32,6 +34,8 @@ services:
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://narratives:narratives@postgres:5432/narratives
       AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dags
       PYTHONPATH: /opt/airflow/project
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
     ports:
       - "127.0.0.1:${AIRFLOW_PORT:-8080}:8080"
     volumes:
@@ -51,6 +55,9 @@ services:
       - postgres
     env_file:
       - .env
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
     ports:
       - "127.0.0.1:${JUPYTER_PORT:-8888}:8888"
     volumes:
@@ -58,5 +65,51 @@ services:
     working_dir: /workspace
     command: jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root --NotebookApp.token=''
 
+  superset-init:
+    image: apache/superset:4.0.2
+    container_name: gnm_superset_init
+    depends_on:
+      - postgres
+    env_file:
+      - .env
+    environment:
+      SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+    volumes:
+      - superset_home:/app/superset_home
+    command: >
+      /bin/sh -c "
+      superset db upgrade &&
+      superset fab create-admin
+        --username ${SUPERSET_ADMIN_USERNAME}
+        --firstname ${SUPERSET_ADMIN_FIRSTNAME}
+        --lastname ${SUPERSET_ADMIN_LASTNAME}
+        --email ${SUPERSET_ADMIN_EMAIL}
+        --password ${SUPERSET_ADMIN_PASSWORD} || true &&
+      superset init
+      "
+
+  superset:
+    image: apache/superset:4.0.2
+    container_name: gnm_superset
+    restart: unless-stopped
+    depends_on:
+      - superset-init
+      - postgres
+    env_file:
+      - .env
+    environment:
+      SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+    ports:
+      - "127.0.0.1:${SUPERSET_PORT:-8088}:8088"
+    volumes:
+      - superset_home:/app/superset_home
+    command: >
+      /bin/sh -c "superset run -h 0.0.0.0 -p 8088"
+
 volumes:
   postgres_data:
+  superset_home:

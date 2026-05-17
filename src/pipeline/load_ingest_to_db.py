@@ -35,6 +35,19 @@ def domain_expr(url_col="url"):
         .alias("domain")
     )
 
+def domain_from_url(url: str | None) -> str:
+    u = (url or "").strip()
+    if not u:
+        return "unknown"
+    host = urlsplit(u).netloc or urlsplit(f"http://{u}").netloc
+    host = host.lower().strip()
+    if not host:
+        return "unknown"
+    if host.startswith("www."):
+        host = host[4:]
+    return host or "unknown"
+    
+
 def detect_lang(text: str) -> str | None:
     try:
         return langid.classify(text[:2000])[0]

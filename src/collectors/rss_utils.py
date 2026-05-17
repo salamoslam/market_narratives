@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit, urlunsplit
@@ -24,6 +24,7 @@ from src.collectors.ccnews_extractor import parse_extracted_article
 from hashlib import sha256
 import psycopg
 from src.config import get_settings
+from src.pipeline.load_ingest_to_db import domain_from_url
 
 
 OUT_ROOT = str(Path(__file__).resolve().parents[2] / "data" / "raw" / "rss")
@@ -36,6 +37,7 @@ def _parse_datetime(value: object) -> datetime | None:
         return parsedate_to_datetime(text_value)
     except (TypeError, ValueError):
         return None
+
 
 def collect_rss_articles(feed_urls: list[str] | tuple[str, ...]) -> list[NewsArticle]:
     articles: list[NewsArticle] = []
@@ -238,6 +240,15 @@ async def run_rss_cycle(
         entries = feed.entries[:max_items]
         stats["rss_entries"] += len(entries)
 
+        # collect published dates by url
+        entry_pubdate_by_url = {}
+        for e in entries:
+            u = clean_url(str(e.get("link", "")).strip())
+            if not u:
+                continue
+            entry_pubdate_by_url[u] = e.get("published") or e.get("pubDate") or e.get("updated")
+        
+        # get resolved urls
         urls = [clean_url(str(e.get("link", "")).strip()) for e in entries]
         rows = [(sha256(u.encode("utf-8")).hexdigest(), u, rss_url) for u in urls]
         resolved_urls = get_resolved_urls(rss_url, rows) # check if the url is already in the database
@@ -252,27 +263,11 @@ async def run_rss_cycle(
 
             html, status, err = fetch_with_retry(requests, url, request_timeout=request_timeout, max_retries=3)
             if err:
-                failed_urls.append((url, err))
                 print(f"[LINK_FAIL] feed={rss_url} url={url} err={err}")
                 continue
             else:
                 stats["fetched_ok"] += 1
                 print(f"[LINK_OK] feed={rss_url} url={url} status={status}")
-
-            # try:
-            #     r = requests.get(
-            #         url,
-            #         timeout=request_timeout,
-            #         headers={"User-Agent": "Mozilla/5.0"},
-            #     )
-            #     r.raise_for_status()
-            #     html = r.text
-            #     stats["fetched_ok"] += 1
-            #     print(f"[LINK_OK] feed={rss_url} url={url} status={r.status_code}")
-
-            # except Exception as ex:
-            #     print(f"[LINK_FAIL] feed={rss_url} url={url} err={ex}")
-            #     continue
 
             extracted = trafilatura.extract(
                 html,
@@ -297,10 +292,15 @@ async def run_rss_cycle(
                 continue
 
             data, text, lang = parsed["data"], parsed["text"], parsed["lang"]
+            rss_pubdate_raw = entry_pubdate_by_url.get(url)
+            dt = _parse_datetime(rss_pubdate_raw) or _parse_datetime(data.get("date"))
+            pub_datetime = dt.isoformat() if dt else None
+
             item = {
                 "url": url,
-                "domain": urlparse(url).netloc.lower(),
+                "domain": domain_from_url(url),
                 "title": data.get("title"),
+                'datetime': pub_datetime,
                 "date": data.get("date"),
                 "author": data.get("author"),
                 "lang": lang,
