@@ -12,10 +12,12 @@ from src.collectors.rss_utils import run_rss_cycle
 from src.config import get_settings
 from src.pipeline.load_ingest_to_db import insert_polars_to_postgres, scan_tree
 import asyncio
+from airflow.operators.trigger_dagrun import TriggerDagRunOperator
+
 
 with DAG(
     dag_id="rss_parse_and_load",
-    start_date=datetime(2026, 1, 1),
+    start_date=datetime(2026, 4, 1),
     schedule="0 */3 * * *",
     catchup=False,
     tags=["rss", "ingestion"],
@@ -159,6 +161,12 @@ with DAG(
 
     parse_task = parse_rss_to_disk()
     load_task = load_rss_to_db()
+    trigger_embeddings = TriggerDagRunOperator(
+        task_id="trigger_news_embeddings_update",
+        trigger_dag_id="news_embeddings_update",
+        wait_for_completion=False,
+        reset_dag_run=False,
+    )
     cleanup_task = cleanup_old_rss_files(retention_days=30)
 
-    parse_task >> load_task >> cleanup_task
+    parse_task >> load_task >> trigger_embeddings >> cleanup_task

@@ -3,17 +3,14 @@ from __future__ import annotations
 import numpy as np
 import polars as pl
 import psycopg
-from sentence_transformers import SentenceTransformer
 from pgvector.psycopg import register_vector
 from src.config import get_settings
-
-from src.db_utils.pg_utils import select_query
 
 def _safe_text(x: str | None) -> str:
     return (x or "").strip()
 
 
-def run_news_embeddings_transform_polars(
+def run_embeddings_transform(
     *,
     model_name: str = "intfloat/multilingual-e5-small",
     select_batch_size: int = 2000,
@@ -22,6 +19,9 @@ def run_news_embeddings_transform_polars(
     normalize_embeddings: bool = True,
     device: str = "cpu"
 ) -> dict[str, int]:
+
+    from sentence_transformers import SentenceTransformer
+
     dsn = get_settings().postgres_dsn
 
     print(f"[EMB_START] model={model_name} select_batch_size={select_batch_size} encode_batch_size={encode_batch_size} max_rows={max_rows} normalize={normalize_embeddings}")
@@ -40,6 +40,30 @@ def run_news_embeddings_transform_polars(
         register_vector(conn)
 
         print("[EMB_DB] connected")
+
+        with conn.cursor() as cur:
+            cur.execute("DROP TABLE IF EXISTS tmp_news_to_embed")
+            cur.execute(
+                """
+                CREATE TEMP TABLE tmp_news_to_embed AS
+                SELECT
+                    a.article_id,
+                    CASE
+                        WHEN %s = 'intfloat/multilingual-e5-small'
+                            THEN 'passage: ' || a.title || ' ' || a.text
+                        ELSE a.title || ' ' || a.text
+                    END AS text,
+                    a.datetime
+                FROM news_articles a
+                LEFT JOIN news_embeddings e ON e.article_id = a.article_id
+                WHERE e.article_id IS NULL
+                """,
+                (model_name,),
+            )
+            cur.execute(
+                "CREATE INDEX tmp_news_to_embed_dt_id_idx ON tmp_news_to_embed (datetime DESC NULLS LAST, article_id)"
+            )
+        
         while True:
             if max_rows is not None and processed >= max_rows:
                 print(f"[EMB_STOP] reached max_rows={max_rows}")
@@ -49,25 +73,22 @@ def run_news_embeddings_transform_polars(
             batch_idx += 1
             print(f"[EMB_BATCH_START] batch={batch_idx} limit={limit} processed_so_far={processed}")
 
-            query = """
-                SELECT a.article_id, 
-                    CASE 
-                        WHEN %s = 'intfloat/multilingual-e5-small' 
-                            THEN 'passage: ' || a.title || ' ' || a.text
-                        ELSE a.title || ' ' || a.text
-                    END as text
-           
-                FROM news_articles a
-                LEFT JOIN news_embeddings e ON e.article_id = a.article_id
-                WHERE e.article_id IS NULL
-                ORDER BY a.datetime DESC NULLS LAST, a.article_id
-                LIMIT %s
-            """
-            batch_df = select_query(query, (model_name, limit))
-
-            if batch_df.height == 0:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT article_id, text
+                    FROM tmp_news_to_embed
+                    ORDER BY datetime DESC NULLS LAST, article_id
+                    LIMIT %s
+                    """,
+                    (limit,),
+                )
+                rows = cur.fetchall()
+            if not rows:
                 print(f"[EMB_BATCH_EMPTY] batch={batch_idx} no rows left")
                 break
+
+            batch_df = pl.DataFrame(rows, schema=["article_id", "text"], orient="row")
 
             texts = [_safe_text(x) for x in batch_df["text"].to_list()]
 
@@ -93,6 +114,8 @@ def run_news_embeddings_transform_polars(
 
             sample_id = payload[0][0] if payload else None
             print(f"[EMB_BATCH_PAYLOAD] batch={batch_idx} payload_rows={len(payload)} sample_article_id={sample_id}")
+            
+            ids_to_delete = [r[0] for r in rows]
 
             with conn.cursor() as cur:
                 cur.executemany(
@@ -108,6 +131,11 @@ def run_news_embeddings_transform_polars(
                 )
                 delta = cur.rowcount or 0
                 upserted += delta
+
+                cur.execute(
+                    "DELETE FROM tmp_news_to_embed WHERE article_id = ANY(%s)",
+                    (ids_to_delete,),
+                )
 
             processed += emb_df.height
             print(f"[EMB_BATCH_DONE] batch={batch_idx} batch_rows={emb_df.height} batch_upserted={delta} total_processed={processed} total_upserted={upserted}")
