@@ -15,6 +15,7 @@ class Settings:
     postgres_password: str = os.getenv("POSTGRES_PASSWORD", "narratives")
     postgres_host: str = os.getenv("POSTGRES_HOST", "localhost")
     postgres_port: int = int(os.getenv("POSTGRES_PORT", "5432"))
+    ccnews_base_url: str = os.getenv("CCNEWS_BASE_URL", "https://data.commoncrawl.org/")
     rss_feeds: tuple[str, ...] = tuple(
         feed.strip()
         for feed in os.getenv("RSS_FEEDS", "").split(",")
