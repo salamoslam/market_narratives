@@ -98,3 +98,79 @@ def insert_polars_to_postgres(
                 if verbose:
                     print(f"processed={processed}/{n_total} ({processed / n_total:.1%})")
     return {"rows_in_df": n_total, "inserted_estimate": inserted_est}
+
+
+def ingest_ccnews_jsonl_file(
+    jsonl_path: str,
+    *,
+    dsn: str | None = None,
+    source_type: str = "ccnews",
+    verbose: bool = True,
+) -> dict[str, int]:
+    if dsn is None:
+        dsn = get_settings().postgres_dsn
+
+    lf = pl.scan_ndjson(jsonl_path)
+
+    df = (
+        lf.select(
+            [
+                pl.col("url").cast(pl.Utf8).alias("url"),
+                pl.col("title").cast(pl.Utf8).alias("title"),
+                pl.col("domain").cast(pl.Utf8).alias("domain_raw"),
+                pl.col("date").cast(pl.Utf8).alias("datetime_str"),
+                pl.col("author").cast(pl.Utf8).alias("author"),
+                pl.col("lang").cast(pl.Utf8).alias("lang"),
+                pl.col("text").cast(pl.Utf8).alias("text"),
+            ]
+        )
+        .filter(
+            pl.col("url").is_not_null()
+            & pl.col("text").is_not_null()
+            & (pl.col("url").str.len_chars() > 0)
+            & (pl.col("text").str.len_chars() > 0)
+        )
+        .with_columns(
+            [
+                pl.lit(source_type).alias("source_type"),
+                pl.col("url").map_elements(hash_url, return_dtype=pl.Utf8).alias("article_id"),
+                pl.col("text").map_elements(hash_text500, return_dtype=pl.Utf8).alias("text_hash"),
+                pl.when(pl.col("domain_raw").is_null() | (pl.col("domain_raw").str.len_chars() == 0))
+                .then(pl.col("url").map_elements(domain_from_url, return_dtype=pl.Utf8))
+                .otherwise(pl.col("domain_raw").str.to_lowercase())
+                .alias("domain"),
+                pl.col("datetime_str").str.strptime(pl.Datetime(time_zone="UTC"), strict=False).alias("datetime"),
+            ]
+        )
+        .with_columns(pl.col("datetime").dt.date().alias("date"))
+        .select(
+            [
+                "article_id",
+                "text_hash",
+                "source_type",
+                "domain",
+                "title",
+                "url",
+                "datetime",
+                "date",
+                "author",
+                "lang",
+                "text",
+            ]
+        )
+        .unique(subset=["article_id"], keep="first")
+        .collect(streaming=True)
+    )
+
+    return insert_polars_to_postgres(
+        df,
+        table_name="news_articles",
+        target_cols=[
+            "article_id", "text_hash", "source_type", "domain", "title",
+            "url", "datetime", "date", "author", "lang", "text",
+        ],
+        dsn=dsn,
+        conflict_col="article_id",
+        batch_size=5000,
+        verbose=verbose,
+    )

@@ -54,8 +54,8 @@ def run_embeddings_transform(
                         ELSE a.title || ' ' || a.text
                     END AS text,
                     a.datetime
-                FROM news_articles a
-                LEFT JOIN news_embeddings e ON e.article_id = a.article_id
+                FROM raw.news_articles a
+                LEFT JOIN raw.news_embeddings e ON e.article_id = a.article_id
                 WHERE e.article_id IS NULL
                 """,
                 (model_name,),
@@ -120,7 +120,7 @@ def run_embeddings_transform(
             with conn.cursor() as cur:
                 cur.executemany(
                     """
-                    INSERT INTO news_embeddings (article_id, text_embedding, model_name, updated_at)
+                    INSERT INTO raw.news_embeddings (article_id, text_embedding, model_name, updated_at)
                     VALUES (%s, %s, %s, now())
                     ON CONFLICT (article_id) DO UPDATE
                     SET model_name = EXCLUDED.model_name,

@@ -163,7 +163,7 @@ def get_resolved_urls(rss_url: str, rows: list[tuple[str, str, str]]) -> list[st
                 """
                 SELECT c.url
                 FROM tmp_rss_candidates c
-                LEFT JOIN news_articles n
+                LEFT JOIN raw.news_articles n
                 ON n.article_id = c.article_id
                 WHERE n.article_id IS NULL
                 """

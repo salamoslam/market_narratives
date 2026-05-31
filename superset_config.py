@@ -1,0 +1,6 @@
+from datetime import timedelta
+
+PERMANENT_SESSION_LIFETIME = timedelta(days=7)
+SESSION_COOKIE_SAMESITE = "Lax"
+SESSION_COOKIE_SECURE = False
+WTF_CSRF_TIME_LIMIT = 60 * 60 * 24 * 7

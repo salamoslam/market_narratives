@@ -74,10 +74,12 @@ services:
       - .env
     environment:
       SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY}
+      SUPERSET_CONFIG_PATH: /app/pythonpath/superset_config.py
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
     volumes:
       - superset_home:/app/superset_home
+      - ./superset_config.py:/app/pythonpath/superset_config.py:ro
     command: >
       /bin/sh -c "
       superset db upgrade &&
@@ -100,6 +102,7 @@ services:
     env_file:
       - .env
     environment:
+      SUPERSET_CONFIG_PATH: /app/pythonpath/superset_config.py
       SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY}
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
@@ -107,6 +110,7 @@ services:
       - "127.0.0.1:${SUPERSET_PORT:-8088}:8088"
     volumes:
       - superset_home:/app/superset_home
+      - ./superset_config.py:/app/pythonpath/superset_config.py:ro
     command: >
       /bin/sh -c "superset run -h 0.0.0.0 -p 8088"
 

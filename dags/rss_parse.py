@@ -123,7 +123,7 @@ with DAG(
 
         stats = insert_polars_to_postgres(
             df,
-            table_name="news_articles",
+            table_name="raw.news_articles",
             target_cols=[
                 "article_id",
                 "text_hash",

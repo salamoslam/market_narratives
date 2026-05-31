@@ -16,6 +16,11 @@ from time import perf_counter
 import langid
 import hashlib
 
+from src.config import get_settings
+from concurrent.futures import ProcessPoolExecutor, as_completed
+
+settings = get_settings()
+BASE_URL = settings.ccnews_base_url
 
 def domain_allowed(url, allowed_domains):
     domain = urlparse(url).netloc.lower()
@@ -215,3 +220,93 @@ def run_one_warc(warc_url, cfg):
             allowed_langs=cfg["allowed_langs"],
         )
     return {"warc_url": warc_url, "output_path": str(output_path), "stats": dict(stats)}
+
+
+def warc_already_done(conn, warc_path: str) -> bool:
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT 1 FROM raw.ccnews_warc_checkpoint WHERE warc_path = %s AND status = 'done' LIMIT 1",
+            (warc_path,),
+        )
+        return cur.fetchone() is not None
+
+
+def mark_warc_done(conn, warc_path: str, month: str, rows_written: int, rows_inserted: int) -> None:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO raw.ccnews_warc_checkpoint (warc_path, month, status, rows_written, rows_inserted, updated_at)
+            VALUES (%s, %s, 'done', %s, %s, now())
+            ON CONFLICT (warc_path) DO UPDATE
+            SET status = EXCLUDED.status,
+                rows_written = EXCLUDED.rows_written,
+                rows_inserted = EXCLUDED.rows_inserted,
+                updated_at = now()
+            """,
+            (warc_path, month, rows_written, rows_inserted),
+        )
+
+
+def run_ccnews_month(
+    *,
+    month: str,
+    output_root: str = "/opt/airflow/project/data/raw/ccnews",
+    max_workers: int = 4,
+    max_warcs: int | None = None,
+    allowed_domains: set[str],
+    bad_paths: list[str],
+    max_html_size: int = 1_000_000,
+    write_batch_size: int = 200,
+    max_items_per_warc: int = 100000,
+    downsample_rate: float | None = None,
+    allowed_langs: tuple[str, ...] = ("en", "ru"),
+) -> dict:
+
+    BASE_URL = "https://data.commoncrawl.org/"
+    out_root = Path(output_root)
+    out_root.mkdir(parents=True, exist_ok=True)
+    processed_log = out_root / month / "_processed_warcs.json"
+    processed_log.parent.mkdir(parents=True, exist_ok=True)
+    cfg = {
+        "bad_paths": bad_paths,
+        "max_html_size": max_html_size,
+        "write_batch_size": write_batch_size,
+        "max_items_per_warc": max_items_per_warc,
+        "downsample_rate": downsample_rate,
+        "allowed_domains": allowed_domains,
+        "allowed_langs": allowed_langs,
+        "output_root": str(out_root),
+    }
+    processed = load_processed(str(processed_log))
+    warc_rels = load_month_paths(BASE_URL, month)
+    random.shuffle(warc_rels)
+    warc_rels = [w for w in warc_rels if w not in processed]
+    if max_warcs is not None:
+        warc_rels = warc_rels[:max_warcs]
+    total = defaultdict(float)
+    t0 = perf_counter()
+    with ProcessPoolExecutor(max_workers=max_workers) as ex:
+        future_map = {
+            ex.submit(run_one_warc, BASE_URL + warc_rel, cfg): warc_rel
+            for warc_rel in warc_rels
+        }
+        for fut in as_completed(future_map):
+            warc_rel = future_map[fut]
+            try:
+                res = fut.result()
+                stats = res["stats"]
+                for k, v in stats.items():
+                    total[k] += v
+                processed.add(warc_rel)
+                save_processed(processed, str(processed_log))
+            except Exception:
+                pass
+    elapsed = perf_counter() - t0
+    return {
+        "month": month,
+        "warcs_total": len(warc_rels),
+        "written": int(total.get("written", 0)),
+        "records_seen": int(total.get("records_seen", 0)),
+        "extract_seconds": float(total.get("extract_seconds", 0)),
+        "elapsed_seconds": elapsed,
+    }
