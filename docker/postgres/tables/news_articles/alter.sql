@@ -1,0 +1,2 @@
+ALTER TABLE IF EXISTS raw.news_articles
+ADD COLUMN IF NOT EXISTS source_warc TEXT;

@@ -164,7 +164,7 @@ def ingest_ccnews_jsonl_file(
 
     return insert_polars_to_postgres(
         df,
-        table_name="news_articles",
+        table_name="raw.news_articles",
         target_cols=[
             "article_id", "text_hash", "source_type", "domain", "title",
             "url", "datetime", "date", "author", "lang", "text",

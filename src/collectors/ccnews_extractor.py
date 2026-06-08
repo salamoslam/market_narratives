@@ -241,10 +241,83 @@ def mark_warc_done(conn, warc_path: str, month: str, rows_written: int, rows_ins
             SET status = EXCLUDED.status,
                 rows_written = EXCLUDED.rows_written,
                 rows_inserted = EXCLUDED.rows_inserted,
+                error_text = NULL,
                 updated_at = now()
             """,
             (warc_path, month, rows_written, rows_inserted),
         )
+
+
+def mark_warc_failed(conn, warc_path: str, month: str, error_text: str) -> None:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO raw.ccnews_warc_checkpoint (warc_path, month, status, error_text, updated_at)
+            VALUES (%s, %s, 'failed', %s, now())
+            ON CONFLICT (warc_path) DO UPDATE
+            SET status = 'failed',
+                error_text = EXCLUDED.error_text,
+                updated_at = now()
+            """,
+            (warc_path, month, error_text[:2000]),
+        )
+
+
+def upsert_month_total_warcs(conn, month: str, total_warcs: int) -> None:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO raw.ccnews_month_checkpoint (month, total_warcs, updated_at)
+            VALUES (%s, %s, now())
+            ON CONFLICT (month) DO UPDATE
+            SET total_warcs = EXCLUDED.total_warcs,
+                updated_at = now()
+            """,
+            (month, total_warcs),
+        )
+
+
+def refresh_month_warc_counts(conn, month: str) -> None:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE raw.ccnews_month_checkpoint m
+            SET done_warcs = s.done_warcs,
+                failed_warcs = s.failed_warcs,
+                updated_at = now()
+            FROM (
+                SELECT
+                    month,
+                    COUNT(*) FILTER (WHERE status = 'done')::INT AS done_warcs,
+                    COUNT(*) FILTER (WHERE status = 'failed')::INT AS failed_warcs
+                FROM raw.ccnews_warc_checkpoint
+                WHERE month = %s
+                GROUP BY month
+            ) s
+            WHERE m.month = s.month
+            """,
+            (month,),
+        )
+
+
+def get_month_warc_counts(conn, month: str) -> dict[str, int]:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT total_warcs, done_warcs, failed_warcs
+            FROM raw.ccnews_month_checkpoint
+            WHERE month = %s
+            """,
+            (month,),
+        )
+        row = cur.fetchone()
+    if row is None:
+        return {"total_warcs": 0, "done_warcs": 0, "failed_warcs": 0}
+    return {
+        "total_warcs": int(row[0]),
+        "done_warcs": int(row[1]),
+        "failed_warcs": int(row[2]),
+    }
 
 
 def run_ccnews_month(
