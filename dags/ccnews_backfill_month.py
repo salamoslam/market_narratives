@@ -38,8 +38,8 @@ with DAG(
     start_date=datetime(2026, 1, 1),
     schedule=None,
     catchup=False,
-    max_active_runs=1,
-    max_active_tasks=1,
+    max_active_runs=4,
+    max_active_tasks=4,
     params={
         "month": Param(default="2026/01", type="string"),
         "max_warcs": Param(default=0, type="integer"),
@@ -142,6 +142,8 @@ with DAG(
                             rows_written=written,
                             rows_inserted=inserted,
                         )
+                        refresh_month_warc_counts(conn, month)
+
                         print(
                             f"WARC_DONE month={month} idx={idx}/{len(warc_rels)} warc={warc_rel} "
                             f"written={written} inserted={inserted} "
@@ -152,7 +154,6 @@ with DAG(
                         mark_warc_failed(conn, warc_rel, month, str(e))
                         print(f"WARC_FAILED month={month} idx={idx}/{len(warc_rels)} warc={warc_rel} error={e}")
 
-                refresh_month_warc_counts(conn, month)
                 month_progress[month] = get_month_warc_counts(conn, month)
                 print(
                     f"MONTH_DONE month={month} progress={month_progress[month]} "
