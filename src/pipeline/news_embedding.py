@@ -17,14 +17,25 @@ def run_embeddings_transform(
     encode_batch_size: int = 128,
     max_rows: int | None = None,
     normalize_embeddings: bool = True,
-    device: str = "cpu"
+    device: str = "cpu",
+    shard_id: int = 0,
+    num_shards: int = 1,
 ) -> dict[str, int]:
 
     from sentence_transformers import SentenceTransformer
 
+    if num_shards < 1:
+        raise ValueError(f"num_shards must be >= 1, got {num_shards}")
+    if shard_id < 0 or shard_id >= num_shards:
+        raise ValueError(f"shard_id must be in [0, {num_shards}), got {shard_id}")
+
     dsn = get_settings().postgres_dsn
 
-    print(f"[EMB_START] model={model_name} select_batch_size={select_batch_size} encode_batch_size={encode_batch_size} max_rows={max_rows} normalize={normalize_embeddings}")
+    print(
+        f"[EMB_START] model={model_name} select_batch_size={select_batch_size} "
+        f"encode_batch_size={encode_batch_size} max_rows={max_rows} "
+        f"normalize={normalize_embeddings} shard={shard_id}/{num_shards}"
+    )
 
     model = SentenceTransformer(model_name, device=device)
     dim = model.get_embedding_dimension()
@@ -57,12 +68,33 @@ def run_embeddings_transform(
                 FROM raw.news_articles a
                 LEFT JOIN raw.news_embeddings e ON e.article_id = a.article_id
                 WHERE e.article_id IS NULL
+                  AND mod(abs(hashtext(a.article_id)::bigint), %s) = %s
                 """,
-                (model_name,),
+                (model_name, num_shards, shard_id),
             )
             cur.execute(
                 "CREATE INDEX tmp_news_to_embed_dt_id_idx ON tmp_news_to_embed (datetime DESC NULLS LAST, article_id)"
             )
+            cur.execute(
+                """
+                SELECT count(*)
+                FROM raw.news_articles a
+                LEFT JOIN raw.news_embeddings e ON e.article_id = a.article_id
+                WHERE e.article_id IS NULL
+                """
+            )
+            total_non_embedded = cur.fetchone()[0]
+            cur.execute("SELECT count(*) FROM tmp_news_to_embed")
+            shard_non_embedded = cur.fetchone()[0]
+
+        shard_share_pct = (shard_non_embedded / total_non_embedded * 100) if total_non_embedded else 0.0
+        print(
+            f"[EMB_SELECT] total_non_embedded={total_non_embedded} "
+            f"shard_rows={shard_non_embedded} shard={shard_id}/{num_shards} "
+            f"shard_share={shard_share_pct:.1f}%"
+        )
+        if shard_non_embedded == 0:
+            print(f"[EMB_SELECT_EMPTY] shard={shard_id}/{num_shards} nothing to embed")
         
         while True:
             if max_rows is not None and processed >= max_rows:
@@ -71,7 +103,15 @@ def run_embeddings_transform(
 
             limit = select_batch_size if max_rows is None else min(select_batch_size, max_rows - processed)
             batch_idx += 1
-            print(f"[EMB_BATCH_START] batch={batch_idx} limit={limit} processed_so_far={processed}")
+            shard_remaining = shard_non_embedded - processed
+            shard_progress_pct = (processed / shard_non_embedded * 100) if shard_non_embedded else 100.0
+            global_progress_pct = (processed / total_non_embedded * 100) if total_non_embedded else 100.0
+            print(
+                f"[EMB_BATCH_START] batch={batch_idx} limit={limit} "
+                f"shard_progress={processed}/{shard_non_embedded} ({shard_progress_pct:.1f}%) "
+                f"shard_remaining={shard_remaining} "
+                f"global_backlog={total_non_embedded} global_shard_share={global_progress_pct:.1f}%"
+            )
 
             with conn.cursor() as cur:
                 cur.execute(
@@ -138,8 +178,25 @@ def run_embeddings_transform(
                 )
 
             processed += emb_df.height
-            print(f"[EMB_BATCH_DONE] batch={batch_idx} batch_rows={emb_df.height} batch_upserted={delta} total_processed={processed} total_upserted={upserted}")
+            shard_remaining = shard_non_embedded - processed
+            shard_progress_pct = (processed / shard_non_embedded * 100) if shard_non_embedded else 100.0
+            print(
+                f"[EMB_BATCH_DONE] batch={batch_idx} batch_rows={emb_df.height} batch_upserted={delta} "
+                f"shard_progress={processed}/{shard_non_embedded} ({shard_progress_pct:.1f}%) "
+                f"shard_remaining={shard_remaining} total_upserted={upserted}"
+            )
 
-    print(f"[EMB_DONE] processed={processed} upserted={upserted} embedding_dim={dim}")
+    print(
+        f"[EMB_DONE] shard={shard_id}/{num_shards} processed={processed}/{shard_non_embedded} "
+        f"upserted={upserted} total_non_embedded={total_non_embedded} embedding_dim={dim}"
+    )
 
-    return {"processed": processed, "upserted": upserted, "embedding_dim": dim}
+    return {
+        "processed": processed,
+        "upserted": upserted,
+        "embedding_dim": dim,
+        "shard_id": shard_id,
+        "num_shards": num_shards,
+        "total_non_embedded": total_non_embedded,
+        "shard_non_embedded": shard_non_embedded,
+    }
