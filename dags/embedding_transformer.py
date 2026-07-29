@@ -9,9 +9,11 @@ from airflow.models import Variable
 from src.pipeline.news_embedding import run_embeddings_transform
 
 
-NUM_SHARDS = int(Variable.get("news_embeddings_num_shards", default_var="2"))
-SELECT_BATCH_SIZE = int(Variable.get("news_embeddings_select_batch_size", default_var="500"))
-ENCODE_BATCH_SIZE = int(Variable.get("news_embeddings_encode_batch_size", default_var="32"))
+MAX_SHARDS = 8
+
+
+def _embedding_var(name: str, default: str) -> int:
+    return int(Variable.get(name, default_var=default))
 
 
 with DAG(
@@ -20,22 +22,30 @@ with DAG(
     schedule=None,
     catchup=False,
     max_active_runs=1,
-    max_active_tasks=NUM_SHARDS,
+    max_active_tasks=MAX_SHARDS,
     default_args={"retries": 2, "retry_delay": timedelta(minutes=2)},
     tags=["embeddings", "news"],
 ) as dag:
     @task
-    def update_news_embeddings(shard_id: int, num_shards: int = NUM_SHARDS) -> dict[str, int]:
+    def get_shard_ids() -> list[int]:
+        num_shards = _embedding_var("news_embeddings_num_shards", "2")
+        if num_shards < 1:
+            raise ValueError(f"news_embeddings_num_shards must be >= 1, got {num_shards}")
+        if num_shards > MAX_SHARDS:
+            raise ValueError(f"news_embeddings_num_shards must be <= {MAX_SHARDS}, got {num_shards}")
+        return list(range(num_shards))
+
+    @task
+    def update_news_embeddings(shard_id: int) -> dict[str, int]:
+        num_shards = _embedding_var("news_embeddings_num_shards", "2")
         return run_embeddings_transform(
             max_rows=None,
-            select_batch_size=SELECT_BATCH_SIZE,
-            encode_batch_size=ENCODE_BATCH_SIZE,
+            select_batch_size=_embedding_var("news_embeddings_select_batch_size", "500"),
+            encode_batch_size=_embedding_var("news_embeddings_encode_batch_size", "32"),
             normalize_embeddings=True,
             device="cpu",
             shard_id=shard_id,
             num_shards=num_shards,
         )
 
-    update_news_embeddings.partial(num_shards=NUM_SHARDS).expand(
-        shard_id=list(range(NUM_SHARDS))
-    )
+    update_news_embeddings.expand(shard_id=get_shard_ids())
