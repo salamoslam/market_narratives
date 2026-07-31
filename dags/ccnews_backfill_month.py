@@ -22,17 +22,6 @@ from src.collectors.ccnews_extractor import (
 from src.pipeline.load_ingest_to_db import ingest_ccnews_jsonl_file
 
 
-BAD_PATHS = [
-    "/video/",
-    "/videos/",
-    "/live/",
-    "/gallery/",
-    "/podcast/",
-    "sport",
-    "crimea",
-]
-
-
 with DAG(
     dag_id="ccnews_month_backfill",
     start_date=datetime(2026, 1, 1),
@@ -66,7 +55,7 @@ with DAG(
         max_warcs = int(max_warcs) if max_warcs else None
 
         cfg = {
-            "bad_paths": conf.get("bad_paths", BAD_PATHS),
+            "bad_paths": conf.get("bad_paths", list(settings.bad_url_patterns)),
             "max_html_size": int(conf.get("max_html_size", 1_000_000)),
             "write_batch_size": int(conf.get("write_batch_size", 200)),
             "max_items_per_warc": int(conf.get("max_items_per_warc", 100_000)),

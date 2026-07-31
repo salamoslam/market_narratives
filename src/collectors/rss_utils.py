@@ -19,7 +19,7 @@ from tqdm import tqdm
 from playwright.async_api import async_playwright
 
 from src.storage.models import NewsArticle
-from src.collectors.ccnews_extractor import parse_extracted_article
+from src.collectors.ccnews_extractor import parse_extracted_article, url_is_article
 
 from hashlib import sha256
 import psycopg
@@ -64,6 +64,14 @@ def collect_rss_articles(feed_urls: list[str] | tuple[str, ...]) -> list[NewsArt
 
 
 def clean_url(u: str) -> str:
+    '''
+    Removes the 'traffic_source' query parameter from the given URL and returns the cleaned URL.
+    This is needed to avoid treating URLs as different if the only difference is the 'traffic_source' tracker param.
+    Example:
+      input:  "https://example.com/article?traffic_source=abc&utm_campaign=xyz"
+      output: "https://example.com/article?utm_campaign=xyz"
+    '''
+
     parts = urlsplit(u)
     q = [(k, v) for k, v in parse_qsl(parts.query, keep_blank_values=True) if k != "traffic_source"]
     return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(q), parts.fragment))
@@ -220,9 +228,13 @@ async def run_rss_cycle(
     out_root=OUT_ROOT
 ):
 
+    settings = get_settings()
+    bad_paths = list(settings.bad_url_patterns)
+
     stats = {
         "feeds": len(rss_urls),
         "rss_entries": 0,
+        "url_filtered_out": 0,
         "fetched_ok": 0,
         "extract_non_empty": 0,
         "json_errors": 0,
@@ -246,10 +258,12 @@ async def run_rss_cycle(
             u = clean_url(str(e.get("link", "")).strip())
             if not u:
                 continue
+            if not url_is_article(u, bad_paths):
+                stats["url_filtered_out"] += 1
+                continue
             entry_pubdate_by_url[u] = e.get("published") or e.get("pubDate") or e.get("updated")
-        
-        # get resolved urls
-        urls = [clean_url(str(e.get("link", "")).strip()) for e in entries]
+
+        urls = list(entry_pubdate_by_url)
         rows = [(sha256(u.encode("utf-8")).hexdigest(), u, rss_url) for u in urls]
         resolved_urls = get_resolved_urls(rss_url, rows) # check if the url is already in the database
 
