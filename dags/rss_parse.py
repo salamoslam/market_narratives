@@ -32,6 +32,7 @@ with DAG(
             settings.rss_feeds,
             out_root=str(out_root),
         ))
+        print(f"[RSS_PARSE_TASK_STATS] {stats}")
         return stats
 
     @task

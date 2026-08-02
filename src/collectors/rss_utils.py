@@ -19,12 +19,12 @@ from tqdm import tqdm
 from playwright.async_api import async_playwright
 
 from src.storage.models import NewsArticle
-from src.collectors.ccnews_extractor import parse_extracted_article
+from src.collectors.ccnews_extractor import parse_extracted_article, url_is_article
 
 from hashlib import sha256
 import psycopg
 from src.config import get_settings
-from src.pipeline.load_ingest_to_db import domain_from_url
+from src.pipeline.load_ingest_to_db import domain_from_url, url_allowed_for_rss_entry
 
 
 OUT_ROOT = str(Path(__file__).resolve().parents[2] / "data" / "raw" / "rss")
@@ -64,6 +64,14 @@ def collect_rss_articles(feed_urls: list[str] | tuple[str, ...]) -> list[NewsArt
 
 
 def clean_url(u: str) -> str:
+    '''
+    Removes the 'traffic_source' query parameter from the given URL and returns the cleaned URL.
+    This is needed to avoid treating URLs as different if the only difference is the 'traffic_source' tracker param.
+    Example:
+      input:  "https://example.com/article?traffic_source=abc&utm_campaign=xyz"
+      output: "https://example.com/article?utm_campaign=xyz"
+    '''
+
     parts = urlsplit(u)
     q = [(k, v) for k, v in parse_qsl(parts.query, keep_blank_values=True) if k != "traffic_source"]
     return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(q), parts.fragment))
@@ -135,6 +143,9 @@ def _month_partition_path(base_dir: str, item_date: str | None) -> str:
 
 
 def get_resolved_urls(rss_url: str, rows: list[tuple[str, str, str]]) -> list[str]:
+    '''
+    Get the resolved urls from the database – check if the url is already in the database
+    '''
     settings = get_settings()
     with psycopg.connect(settings.postgres_dsn) as conn:
         with conn.cursor() as cur:
@@ -220,10 +231,20 @@ async def run_rss_cycle(
     out_root=OUT_ROOT
 ):
 
+    settings = get_settings()
+    bad_paths = list(settings.bad_url_patterns)
+
     stats = {
         "feeds": len(rss_urls),
         "rss_entries": 0,
+        "url_filtered_out": 0,
+        "domain_filtered_out": 0,
+        "candidates": 0,
+        "already_in_db": 0,
         "fetched_ok": 0,
+        "fetch_fail": 0,
+        "extract_ok": 0,
+        "extract_fail": 0,
         "extract_non_empty": 0,
         "json_errors": 0,
         "lang_errors": 0,
@@ -240,18 +261,30 @@ async def run_rss_cycle(
         entries = feed.entries[:max_items]
         stats["rss_entries"] += len(entries)
 
-        # collect published dates by url
         entry_pubdate_by_url = {}
         for e in entries:
             u = clean_url(str(e.get("link", "")).strip())
             if not u:
                 continue
+            if not url_is_article(u, bad_paths):
+                stats["url_filtered_out"] += 1
+                continue
+            if not url_allowed_for_rss_entry(
+                u,
+                rss_url,
+                allowed_domains=settings.allowed_domains,
+                publisher_domain_groups=settings.publisher_domain_groups,
+                rss_proxy_feed_hosts=settings.rss_proxy_feed_hosts,
+            ):
+                stats["domain_filtered_out"] += 1
+                continue
             entry_pubdate_by_url[u] = e.get("published") or e.get("pubDate") or e.get("updated")
-        
-        # get resolved urls
-        urls = [clean_url(str(e.get("link", "")).strip()) for e in entries]
+
+        urls = list(entry_pubdate_by_url)
+        stats["candidates"] += len(urls)
         rows = [(sha256(u.encode("utf-8")).hexdigest(), u, rss_url) for u in urls]
-        resolved_urls = get_resolved_urls(rss_url, rows) # check if the url is already in the database
+        resolved_urls = get_resolved_urls(rss_url, rows)
+        stats["already_in_db"] += len(urls) - len(resolved_urls)
 
         for url in tqdm(resolved_urls, desc=f"RSS -> extract | {rss_url}"):
             print(f"[LINK_START] feed={rss_url} url={url}")
@@ -263,11 +296,11 @@ async def run_rss_cycle(
 
             html, status, err = fetch_with_retry(requests, url, request_timeout=request_timeout, max_retries=3)
             if err:
+                stats["fetch_fail"] += 1
                 print(f"[LINK_FAIL] feed={rss_url} url={url} err={err}")
                 continue
-            else:
-                stats["fetched_ok"] += 1
-                print(f"[LINK_OK] feed={rss_url} url={url} status={status}")
+            stats["fetched_ok"] += 1
+            print(f"[LINK_OK] feed={rss_url} url={url} status={status}")
 
             extracted = trafilatura.extract(
                 html,
@@ -282,8 +315,10 @@ async def run_rss_cycle(
                 lang_sample_chars=500,
             )
             if parsed:
+                stats["extract_ok"] += 1
                 print(f"[LINK_EXTRACTED] feed={rss_url} url={url} parsed={parsed['text'][:200]}... d={d}")
             else:
+                stats["extract_fail"] += 1
                 print(f"[LINK_EXTRACTED_FAIL] feed={rss_url} url={url} parsed={parsed} d={d}")
 
             for k, v in d.items():
@@ -310,11 +345,13 @@ async def run_rss_cycle(
             }
             items.append(item)
 
-        # save partitioned by item month
         for x in items:
             out_path = _month_partition_path(out_root, x.get("date"))
             with open(out_path, "a", encoding="utf-8") as f:
                 f.write(json.dumps(x, ensure_ascii=False) + "\n")
             stats["written"] += 1
 
+        print(f"[RSS_STATS] feed={rss_url} " + json.dumps(stats, ensure_ascii=False))
+
+    print("[RSS_CYCLE_STATS] " + json.dumps(stats, ensure_ascii=False))
     return stats, items

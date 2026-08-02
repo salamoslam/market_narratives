@@ -16,6 +16,23 @@ class Settings:
     postgres_host: str = os.getenv("POSTGRES_HOST", "localhost")
     postgres_port: int = int(os.getenv("POSTGRES_PORT", "5432"))
     ccnews_base_url: str = os.getenv("CCNEWS_BASE_URL", "https://data.commoncrawl.org/")
+    bad_url_patterns: tuple[str, ...] = (
+        "/video/",
+        "/videos/",
+        "/audio/",
+        "/live/",
+        "/gallery/",
+        "/podcast/",
+        "/specials/",
+        "sport",
+        "crimea",
+    )
+    publisher_domain_groups: tuple[tuple[str, ...], ...] = (
+        ("bbc.co.uk", "bbc.com", "bbci.co.uk"),
+    )
+    rss_proxy_feed_hosts: tuple[str, ...] = (
+        "feeds.feedburner.com",
+    )
     rss_feeds: tuple[str, ...] = tuple(
         feed.strip()
         for feed in os.getenv("RSS_FEEDS", "").split(",")
@@ -75,26 +92,137 @@ class Settings:
         "www.kommersant.ru",
         "www.lenta.ru",
         "www.nur.kz",
-        "www.zakon.kz"]
-    )
+        "www.zakon.kz",
+        "france24.com",
+        "dw.com",
+        "euronews.com",
+        "npr.org",
+        "foreignpolicy.com",
+        "thediplomat.com",
+        "scmp.com",
+        "arstechnica.com",
+        "techcrunch.com",
+        "wired.com",
+        "theverge.com",
+        "themoscowtimes.com",
+        "meduza.io",
+        "tass.com",
+        "newsru.com",
+        "unian.info",
+        "huffpost.com",
+        "timesofindia.indiatimes.com",
+        "rt.com",
+        "asia.nikkei.com",
+        # "rfi.fr",
+        # "axios.com",
+    ])
+
     rss_feeds: tuple[str, ...] = tuple([
-        "https://www.aljazeera.com/xml/rss/all.xml",
-        # "https://feeds.bbci.co.uk/news/world/rss.xml",
-        # "https://feeds.bbci.co.uk/news/business/rss.xml",
-        # "https://feeds.bbci.co.uk/news/politics/rss.xml",
-        # "https://feeds.bbci.co.uk/news/technology/rss.xml",
+                # --- full-site / aggregate (replace section feeds) ---
         "http://feeds.bbci.co.uk/news/rss.xml",
+        "http://feeds.bbci.co.uk/news/business/rss.xml",
+        "http://feeds.bbci.co.uk/news/technology/rss.xml",
 
+        "https://www.theguardian.com/europe/rss",
+        "https://www.theguardian.com/international/rss",
         "https://www.theguardian.com/world/rss",
+        "https://www.theguardian.com/business/rss",
+        "https://www.theguardian.com/technology/rss",
 
+        "https://www.independent.co.uk/rss",
         "https://www.independent.co.uk/news/world/rss",
         "https://www.independent.co.uk/news/business/rss",
         "https://www.independent.co.uk/news/science/rss",
 
+        "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=100003114",
+        "https://www.cnbc.com/id/100727362/device/rss/rss.html",
+        "https://www.cnbc.com/id/100003114/device/rss/rss.html",
+
+        "https://www.aljazeera.com/xml/rss/all.xml",
+
+        # --- western wire / broadcast ---
+        "https://feeds.nbcnews.com/nbcnews/public/news",
+        "https://abcnews.go.com/abcnews/topstories",
+        "https://www.cbsnews.com/latest/rss/main",
+        "https://feeds.npr.org/1001/rss.xml",
+        "https://rss.dw.com/rdf/rss-en-all",
+        "https://www.euronews.com/rss?format=mrss&level=theme&name=news",
+
+        "https://feeds.skynews.com/feeds/rss/world.xml",
+        "https://www.cbc.ca/cmlink/rss-topstories",
+
+        # --- western politics / policy ---
+        "https://rss.politico.com/politics-news.xml",
+        "https://foreignpolicy.com/feed/",
+        "https://thediplomat.com/feed/",
+
+        # --- western business / macro ---
+        "https://feeds.content.dowjones.io/public/rss/mw_topstories",
+        "https://www.businessinsider.com/rss",
+        "https://news.yahoo.com/rss/",
+        "https://finance.yahoo.com/news/rssindex",
+
+        # --- western regional / international ---
+        "https://www.latimes.com/world-nation/rss2.0.xml",
+        "http://feeds.foxnews.com/foxnews/latest",
+        "https://globalnews.ca/feed/",
+        "https://www.huffpost.com/section/world-news/feed",
+        "https://www.scmp.com/rss/91/feed",
+        "https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml",
+        "https://time.com/feed/",
+        "https://www.newsweek.com/rss",
+
+        # --- global / geopolitics ---
+        "http://rss.cnn.com/rss/edition_world.rss",
+        "https://rss.dw.com/rdf/rss-en-world",
+
+        "https://news.yahoo.com/rss/",
+        "https://feeds.npr.org/1001/rss.xml",
+        "https://foreignpolicy.com/feed/",
+        "https://thediplomat.com/feed/",
+        "https://www.cbsnews.com/latest/rss/main",
+        "https://www.scmp.com/rss/91/feed",
+        "https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml",
+        "https://www.huffpost.com/section/world-news/feed",
+        "https://www.latimes.com/world-nation/rss2.0.xml",
+        "http://feeds.foxnews.com/foxnews/latest",
+        "https://timesofindia.indiatimes.com/rssfeeds/296589292.cms",
+        "https://globalnews.ca/feed/",
+
+        "https://indianexpress.com/section/world/feed/",
+
+        "https://www.businessinsider.com/rss",
+
+        # --- tech ---
+        "http://feeds.arstechnica.com/arstechnica/index",
+        "https://techcrunch.com/feed/",
+        "https://www.theverge.com/rss/index.xml",
+        "https://www.wired.com/feed/rss",
+
+        # --- russian / regional ---
+        "https://www.themoscowtimes.com/rss/news",
+        "https://meduza.io/rss/all",
+        "https://lenta.ru/rss",
+        "https://www.vedomosti.ru/rss/news",
+        "https://www.interfax.ru/rss.asp",
+        "http://tass.com/rss/v2.xml",
+        "https://rss.unian.net/site/news_eng.rss",
+        "https://www.kommersant.ru/RSS/news.xml",
         "https://www.kommersant.ru/rss/section-politics.xml",
         "https://www.kommersant.ru/rss/section-world.xml",
         "https://www.kommersant.ru/rss/section-business.xml",
         "https://www.kommersant.ru/rss/section-society.xml",
+
+
+        # --- optional: state narrative lens ---
+        # "https://www.rt.com/rss/",
+        # --- not viable (kept for reference) ---
+        # "https://www.france24.com/en/rss",  # 0/23 — http_403, bot block from server IP
+        # "http://feeds.washingtonpost.com/rss/world",  # 0/3 — paywall, retry_exhausted
+        # "http://feeds.feedburner.com/ndtvnews-world-news",  # 0/20 — http_403, datacenter block
+        # "https://rss.newsru.com/top/big/",  # feed dead since May 2021, parser ok but no new items
+        # "https://www.rfi.fr/en/rss",
+        # "https://api.axios.com/feed/",
 
         # newindianexpress.com        |   41517
         # the-independent.com         |   38655
