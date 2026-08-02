@@ -19,11 +19,19 @@ class Settings:
     bad_url_patterns: tuple[str, ...] = (
         "/video/",
         "/videos/",
+        "/audio/",
         "/live/",
         "/gallery/",
         "/podcast/",
+        "/specials/",
         "sport",
         "crimea",
+    )
+    publisher_domain_groups: tuple[tuple[str, ...], ...] = (
+        ("bbc.co.uk", "bbc.com", "bbci.co.uk"),
+    )
+    rss_proxy_feed_hosts: tuple[str, ...] = (
+        "feeds.feedburner.com",
     )
     rss_feeds: tuple[str, ...] = tuple(
         feed.strip()
@@ -105,8 +113,8 @@ class Settings:
         "timesofindia.indiatimes.com",
         "rt.com",
         "asia.nikkei.com",
-        "rfi.fr",
-        "axios.com",
+        # "rfi.fr",
+        # "axios.com",
     ])
 
     rss_feeds: tuple[str, ...] = tuple([
@@ -146,12 +154,12 @@ class Settings:
         "https://globalnews.ca/feed/",
 
         "https://www.aljazeera.com/xml/rss/all.xml",
-        "https://www.rfi.fr/en/rss",
+        # "https://www.rfi.fr/en/rss",
         "https://www.theguardian.com/world/rss",
         "http://feeds.bbci.co.uk/news/world/rss.xml",
         "http://feeds.bbci.co.uk/news/politics/rss.xml",
         "https://indianexpress.com/section/world/feed/",
-        "https://api.axios.com/feed/",
+        # "https://api.axios.com/feed/",
 
         "https://www.independent.co.uk/news/world/rss",
         "https://www.independent.co.uk/news/business/rss",

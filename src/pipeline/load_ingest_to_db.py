@@ -46,6 +46,95 @@ def domain_from_url(url: str | None) -> str:
     if host.startswith("www."):
         host = host[4:]
     return host or "unknown"
+
+
+_MULTI_PART_SUFFIXES = (
+    ".co.uk",
+    ".org.uk",
+    ".ac.uk",
+    ".gov.uk",
+    ".com.au",
+    ".co.nz",
+    ".co.za",
+)
+
+_FEED_HOST_PREFIXES = ("rss.", "feeds.", "www.", "api.")
+
+
+def registrable_domain(url_or_host: str) -> str:
+    host = domain_from_url(url_or_host) if "://" in url_or_host else url_or_host.lower().strip()
+    if host.startswith("www."):
+        host = host[4:]
+    for suffix in _MULTI_PART_SUFFIXES:
+        if host.endswith(suffix):
+            base = host[: -len(suffix)]
+            label = base.rsplit(".", 1)[-1]
+            return f"{label}{suffix}"
+    parts = host.split(".")
+    if len(parts) >= 2:
+        return ".".join(parts[-2:])
+    return host
+
+
+def _host_matches_domain(host: str, domain: str) -> bool:
+    host = host.lower().strip()
+    domain = domain.lower().strip()
+    if host.startswith("www."):
+        host = host[4:]
+    return host == domain or host.endswith("." + domain)
+
+
+def domain_in_allowlist(host: str, allowed_domains: tuple[str, ...]) -> bool:
+    host = domain_from_url(host) if "://" in host else host.lower().strip()
+    reg = registrable_domain(host)
+    for allowed in allowed_domains:
+        allowed = allowed.lower().strip()
+        if allowed.startswith("www."):
+            allowed = allowed[4:]
+        if _host_matches_domain(host, allowed) or reg == allowed or _host_matches_domain(reg, allowed):
+            return True
+    return False
+
+
+def expected_article_domains(
+    rss_url: str,
+    publisher_domain_groups: tuple[tuple[str, ...], ...],
+) -> set[str]:
+    feed_host = domain_from_url(rss_url)
+    domains = {feed_host, registrable_domain(feed_host)}
+    for prefix in _FEED_HOST_PREFIXES:
+        if feed_host.startswith(prefix):
+            stripped = feed_host[len(prefix):]
+            domains.add(stripped)
+            domains.add(registrable_domain(stripped))
+    expanded = set(domains)
+    for domain in domains:
+        for group in publisher_domain_groups:
+            if any(domain == member or domain.endswith("." + member) or member in domain for member in group):
+                expanded.update(group)
+    return expanded
+
+
+def url_allowed_for_rss_entry(
+    article_url: str,
+    rss_url: str,
+    *,
+    allowed_domains: tuple[str, ...],
+    publisher_domain_groups: tuple[tuple[str, ...], ...],
+    rss_proxy_feed_hosts: tuple[str, ...],
+) -> bool:
+    article_host = domain_from_url(article_url)
+    if not article_host or article_host == "unknown":
+        return False
+    feed_host = domain_from_url(rss_url)
+    if feed_host in rss_proxy_feed_hosts:
+        return domain_in_allowlist(article_host, allowed_domains)
+    expected = expected_article_domains(rss_url, publisher_domain_groups)
+    article_reg = registrable_domain(article_host)
+    for domain in expected:
+        if _host_matches_domain(article_host, domain) or article_reg == domain:
+            return True
+    return False
     
 
 def detect_lang(text: str) -> str | None:
