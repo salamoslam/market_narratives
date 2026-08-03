@@ -257,7 +257,7 @@ async def run_rss_cycle(
         items = []
         seen_urls = set()
 
-        feed = feedparser.parse(rss_url)
+        feed = feedparser.parse(requests.get(rss_url, timeout=request_timeout, headers={"User-Agent": "Mozilla/5.0"}, allow_redirects=True).content)
         entries = feed.entries[:max_items]
         stats["rss_entries"] += len(entries)
 
