@@ -257,7 +257,11 @@ async def run_rss_cycle(
         items = []
         seen_urls = set()
 
-        feed = feedparser.parse(requests.get(rss_url, timeout=request_timeout, headers={"User-Agent": "Mozilla/5.0"}, allow_redirects=True).content)
+        try:
+            feed = feedparser.parse(requests.get(rss_url, timeout=request_timeout, headers={"User-Agent": "Mozilla/5.0"}, allow_redirects=True).content)
+        except requests.RequestException as ex:
+            print(f"[FEED_FAIL] feed={rss_url} err={ex.__class__.__name__}")
+            continue
         entries = feed.entries[:max_items]
         stats["rss_entries"] += len(entries)
 
