@@ -148,7 +148,7 @@ class Settings:
         "https://rss.dw.com/rdf/rss-en-all",
         "https://www.euronews.com/rss?format=mrss&level=theme&name=news",
 
-        "https://feeds.skynews.com/feeds/rss/world.xml",
+        # "https://feeds.skynews.com/feeds/rss/world.xml",
         "https://www.cbc.ca/cmlink/rss-topstories",
 
         # --- western politics / policy ---
