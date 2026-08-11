@@ -149,7 +149,7 @@ class Settings:
         "https://www.euronews.com/rss?format=mrss&level=theme&name=news",
 
         # "https://feeds.skynews.com/feeds/rss/world.xml",
-        "https://www.cbc.ca/cmlink/rss-topstories",
+        # "https://www.cbc.ca/cmlink/rss-topstories",
 
         # --- western politics / policy ---
         "https://rss.politico.com/politics-news.xml",

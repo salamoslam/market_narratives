@@ -16,3 +16,12 @@ def select_query(sql: str, params: tuple | list | None = None, dsn: str | None =
             rows = cur.fetchall()
             cols = [d.name for d in cur.description] if cur.description else []
     return pl.DataFrame(rows, schema=cols, orient="row") if cols else pl.DataFrame()
+
+
+def execute_query(sql: str, params: tuple | list | None = None, dsn: str | None = None, autocommit: bool = False) -> None:
+    if dsn is None:
+        dsn = get_settings().postgres_dsn
+    with psycopg.connect(dsn, autocommit=autocommit) as conn:
+
+        with conn.cursor() as cur:
+            cur.execute(sql, params or ())

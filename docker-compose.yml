@@ -56,8 +56,8 @@ services:
     env_file:
       - .env
     environment:
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
+      POSTGRES_HOST: ${POSTGRES_HOST:-postgres}
+      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
     ports:
       - "127.0.0.1:${JUPYTER_PORT:-8888}:8888"
     volumes:
