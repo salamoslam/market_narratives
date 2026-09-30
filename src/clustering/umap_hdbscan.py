@@ -30,10 +30,12 @@ def hdbscan_labels(
     *,
     min_cluster_size: int = 15,
     min_samples: int | None = None,
+    metric: str = "euclidean",
 ) -> np.ndarray:
     clusterer = hdbscan.HDBSCAN(
         min_cluster_size=min_cluster_size,
         min_samples=min_samples,
+        metric=metric,
     )
     return clusterer.fit_predict(X)
 
