@@ -95,7 +95,7 @@ with DAG(
                 .alias("article_id"),
                 pl.col("text")
                 .map_elements(
-                    lambda t: sha256(t[:500].lower().strip().encode("utf-8")).hexdigest(),
+                    lambda t: sha256(t.encode("utf-8")).hexdigest(),
                     return_dtype=pl.Utf8,
                 )
                 .alias("text_hash"),
@@ -118,7 +118,9 @@ with DAG(
                     "text",
                 ]
             )
-            .unique(subset=["article_id"], keep="first")
+            .sort(["datetime", "article_id"], nulls_last=True)
+            .unique(subset=["article_id"], keep="first", maintain_order=True)
+            .unique(subset=["text_hash"], keep="first", maintain_order=True)
             .collect(streaming=True)
         )
 
@@ -139,7 +141,6 @@ with DAG(
                 "text",
             ],
             dsn=settings.postgres_dsn,
-            conflict_col="article_id",
             batch_size=5000,
             verbose=True,
         )
