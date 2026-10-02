@@ -147,9 +147,8 @@ def detect_lang(text: str) -> str | None:
 def hash_url(u: str) -> str:
     return hashlib.sha256(u.encode("utf-8")).hexdigest()
 
-def hash_text500(t: str) -> str:
-    x = t[:500].lower().strip()
-    return hashlib.sha256(x.encode("utf-8")).hexdigest()
+def hash_text(t: str) -> str:
+    return hashlib.sha256(t.encode("utf-8")).hexdigest()
 
 
 def insert_polars_to_postgres(
@@ -158,7 +157,6 @@ def insert_polars_to_postgres(
     table_name: str,
     target_cols: Sequence[str],
     dsn: str | None = None,
-    conflict_col: str = "article_id",
     batch_size: int = 5000,
     verbose: bool = True,
 ) -> dict[str, int]:
@@ -173,7 +171,7 @@ def insert_polars_to_postgres(
     insert_sql = f"""
     INSERT INTO {table_name} ({", ".join(target_cols)})
     VALUES ({", ".join(["%s"] * len(target_cols))})
-    ON CONFLICT ({conflict_col}) DO NOTHING;
+    ON CONFLICT DO NOTHING;
     """
     inserted_est = 0
     processed = 0
@@ -223,7 +221,7 @@ def ingest_ccnews_jsonl_file(
             [
                 pl.lit(source_type).alias("source_type"),
                 pl.col("url").map_elements(hash_url, return_dtype=pl.Utf8).alias("article_id"),
-                pl.col("text").map_elements(hash_text500, return_dtype=pl.Utf8).alias("text_hash"),
+                pl.col("text").map_elements(hash_text, return_dtype=pl.Utf8).alias("text_hash"),
                 pl.when(pl.col("domain_raw").is_null() | (pl.col("domain_raw").str.len_chars() == 0))
                 .then(pl.col("url").map_elements(domain_from_url, return_dtype=pl.Utf8))
                 .otherwise(pl.col("domain_raw").str.to_lowercase())
@@ -247,7 +245,9 @@ def ingest_ccnews_jsonl_file(
                 "text",
             ]
         )
-        .unique(subset=["article_id"], keep="first")
+        .sort(["datetime", "article_id"], nulls_last=True)
+        .unique(subset=["article_id"], keep="first", maintain_order=True)
+        .unique(subset=["text_hash"], keep="first", maintain_order=True)
         .collect(streaming=True)
     )
 
@@ -259,7 +259,6 @@ def ingest_ccnews_jsonl_file(
             "url", "datetime", "date", "author", "lang", "text",
         ],
         dsn=dsn,
-        conflict_col="article_id",
         batch_size=5000,
         verbose=verbose,
     )

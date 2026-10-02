@@ -1,6 +1,6 @@
 CREATE TABLE IF NOT EXISTS raw.news_articles (
     article_id TEXT PRIMARY KEY,
-    text_hash TEXT NOT NULL,
+    text_hash TEXT NOT NULL UNIQUE,
     source_type TEXT NOT NULL,
     source_warc TEXT,
     domain TEXT,
@@ -19,8 +19,6 @@ CREATE INDEX IF NOT EXISTS idx_raw_articles_date
     ON raw.news_articles (date);
 CREATE INDEX IF NOT EXISTS idx_raw_articles_datetime
     ON raw.news_articles (datetime);
-CREATE INDEX IF NOT EXISTS idx_raw_articles_text_hash
-    ON raw.news_articles (text_hash);
 CREATE INDEX IF NOT EXISTS idx_raw_articles_domain
     ON raw.news_articles (domain);
 CREATE INDEX IF NOT EXISTS idx_raw_articles_source_warc
