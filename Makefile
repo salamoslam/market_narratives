@@ -4,7 +4,7 @@ export
 COMPOSE := docker compose
 POSTGRES_SERVICE := postgres
 
-.PHONY: install-local build up down restart rebuild init-db ingest logs ps notebook airflow
+.PHONY: install-local build up down restart rebuild init-db db-run db-query db-query-prod ingest logs ps notebook airflow debug-setup
 
 install-local:
 	python -m pip install -e .
@@ -45,6 +45,10 @@ db-query:
 		-d "$(POSTGRES_DB)" \
 		-c "$(SQL)"
 
+db-query-prod:
+	@test -n "$(SQL)" || { echo 'usage: make db-query-prod SQL="select 1"'; exit 1; }
+	@.venv/bin/python -c 'import os, psycopg; sql=os.environ["SQL"]; conn=psycopg.connect(host=os.environ["POSTGRES_HOST"], port=os.environ["POSTGRES_PORT"], dbname=os.environ["POSTGRES_DB"], user=os.environ["POSTGRES_USER"], password=os.environ["POSTGRES_PASSWORD"], autocommit=True); cur=conn.execute(sql); rows=cur.fetchall() if cur.description else None; print("\n".join("\t".join("" if v is None else str(v) for v in row) for row in rows) if rows is not None else "ok")'
+
 ingest:
 	$(COMPOSE) exec jupyter python scripts/run_ingestion.py
 
@@ -53,3 +57,6 @@ notebook:
 
 airflow:
 	@echo "Open: http://localhost:8080"
+
+debug-setup:
+	./scripts/setup_debug_access.sh
