@@ -38,10 +38,14 @@ services:
       POSTGRES_PORT: 5432
     ports:
       - "127.0.0.1:${AIRFLOW_PORT:-8080}:8080"
+    networks:
+      - default
+      - debug_net
     volumes:
       - ./dags:/opt/airflow/dags
       - ./src:/opt/airflow/project/src
       - ./data:/opt/airflow/project/data
+      - airflow_logs:/opt/airflow/logs
     command: airflow standalone
 
   jupyter:
@@ -108,12 +112,46 @@ services:
       POSTGRES_PORT: 5432
     ports:
       - "127.0.0.1:${SUPERSET_PORT:-8088}:8088"
+    networks:
+      - default
+      - debug_net
     volumes:
       - superset_home:/app/superset_home
       - ./superset_config.py:/app/pythonpath/superset_config.py:ro
     command: >
       /bin/sh -c "superset run -h 0.0.0.0 -p 8088"
 
+  debug:
+    build:
+      context: ./docker/debug
+      dockerfile: Dockerfile
+    image: gnm-debug:local
+    container_name: gnm_debug
+    restart: unless-stopped
+    depends_on:
+      - airflow
+      - superset
+    networks:
+      - debug_net
+    read_only: true
+    tmpfs:
+      - /tmp:mode=1777
+      - /run:mode=755
+      - /var/log
+      - /home/debugger:uid=50000,gid=50000,mode=700
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "127.0.0.1:${DEBUG_SSH_PORT:-2222}:22"
+    volumes:
+      - ${HOME}/.config/market_narratives_engine/debug/authorized_keys:/run/secrets/authorized_keys:ro
+      - airflow_logs:/opt/airflow/logs:ro
+
 volumes:
   postgres_data:
   superset_home:
+  airflow_logs:
+
+networks:
+  debug_net:
+    internal: true
