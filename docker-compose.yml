@@ -133,6 +133,7 @@ services:
       - superset
     networks:
       - debug_net
+      - debug_ssh
     read_only: true
     tmpfs:
       - /tmp:mode=1777
@@ -153,3 +154,4 @@ volumes:
 networks:
   debug_net:
     internal: true
+  debug_ssh:
