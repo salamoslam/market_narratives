@@ -139,8 +139,6 @@ services:
       - /run:mode=755
       - /var/log
       - /home/debugger:uid=50000,gid=50000,mode=700
-    security_opt:
-      - no-new-privileges:true
     ports:
       - "127.0.0.1:${DEBUG_SSH_PORT:-2222}:22"
     volumes:
