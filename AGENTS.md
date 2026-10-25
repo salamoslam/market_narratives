@@ -10,7 +10,7 @@ Explain a change in simple English. Keep the explanation short.
 
 # Debug access on the VPS
 
-The only allowed SSH login is user `debugger` on port `2222`. Do not SSH as `deploy`. Do not use `~/.ssh/narratives`, `~/.ssh/ssh_key_one`, or `~/.ssh/ssh_key_two`. Do not use the database owner, `.env`, or the Docker socket.
+The only allowed SSH login is user `debugger` on port `2222`. Do not SSH as `deploy` (blocked by passphrase). Do not use `~/.ssh/narratives`, `~/.ssh/ssh_key_one`, or `~/.ssh/ssh_key_two`. Do not use the database owner, `.env`, or the Docker socket.
 
 The private key is `~/.config/market_narratives_engine/debug/id_ed25519` on the Mac. The tunnel must forward port `2222`.
 
@@ -19,3 +19,5 @@ ssh -i ~/.config/market_narratives_engine/debug/id_ed25519 -p 2222 debugger@127.
 ```
 
 Inside that shell, read `/opt/airflow/logs` and call `http://airflow:8080/health` and `http://superset:8088/health`. That shell cannot reach Postgres.
+
+Prod SQL from the Mac is `make db-query-prod`. It reads `.env.readonly` only and the session is read-only.
