@@ -24,3 +24,5 @@ logs/
 postgres_data/
 
 agent_guidelines.md
+
+docs/
